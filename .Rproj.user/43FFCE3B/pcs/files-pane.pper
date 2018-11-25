@@ -1,0 +1,9 @@
+{
+    "path" : "~/Documents/FiveThirtyEight Police Deaths Dataset",
+    "sortOrder" : [
+        {
+            "ascending" : true,
+            "columnIndex" : 2
+        }
+    ]
+}

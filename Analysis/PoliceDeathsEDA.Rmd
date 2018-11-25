@@ -1,0 +1,213 @@
+---
+title: "Police Deaths EDA"
+author: "Jason Zivkovic"
+date: "24/11/2018"
+output:
+  html_document:
+    code_folding: hide
+    df_print: paged
+    highlight: pygments
+    number_sections: yes
+    theme: spacelab
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(usmap)
+library(kableExtra)
+
+# police_deaths_clean <- read_csv("../input/clean_data.csv")
+
+police_deaths_clean <- read_csv("Data/clean_data.csv")
+```
+
+# Introduction
+
+The dataset in this analysis was used in the FiveThirtyEight article *The Dallas Shooting Was Among The Deadliest For Police In U.S. History* and can be found here: https://fivethirtyeight.com/features/the-dallas-shooting-was-among-the-deadliest-for-police-in-u-s-history/
+
+The dataset has been kindly cleaned, and contains `r nrow(police_deaths_clean)` rows and `r ncol(police_deaths_clean)` variables.
+
+This kernel will be an exploration of the data and will visualise the worst killings of Police officers in US history.
+
+The data spans the years between `r min(police_deaths_clean$year)` and `r max(police_deaths_clean$year)`. I would imagine that historical data may not have been complete... But who knows.
+
+I am an Australian, so forgive my ignorance when it comes to geographical elements or historical events.
+
+
+# Exploratory Data Analysis
+
+The number of police deaths climbed rapidly from 1850 to a peak in 1930, dipped considerably until 1945, then rose sharply from 1957 to 1975. From that point on, the number has been trending down (other than a peak in 2001).
+```{r}
+police_deaths_clean %>%
+  count(year) %>%
+  ggplot(aes(x= year, y=n)) +
+  geom_line() +
+  labs(x= "Year", y= "Number of deaths", title = "Number of Police deaths through the years") +
+  theme_minimal()
+```
+
+Texas, California and New York are the three states with the highest number of police deaths. Hardly suprising given they are the most populated states in the US. Interestingly, there is a state with the abbreviation "US". Upon further inspection, these appear to be customs officials.
+```{r}
+police_deaths_clean %>%
+  count(state, sort = T) %>%
+  head(n=20) %>%
+  ggplot(aes(x= reorder(state,n), y=n)) +
+  geom_col(fill = "midnightblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 20 states for police deaths", x= "State", y= "Count of deaths")
+```
+
+There is a long tail of causes of deaths. I will lump a lot of the tail into "other" and visualise how these causes are changing over time.
+```{r}
+police_deaths_clean %>%
+  count(cause_short, sort = T) %>%
+  ggplot(aes(x= reorder(cause_short, n), y= n)) +
+  geom_col(fill = "midnightblue") +
+  labs(x= "Cause", y= "Number of Deaths", title = "The causes of Police Officer deaths") +
+  coord_flip() +
+  theme_minimal()
+```
+
+
+Automobile accidents have been increasing over the past 60 or so years. However the rate per population or rate per number of police officers would likely see a different result. 
+
+```{r}
+police_deaths_clean %>%
+  mutate(cause_short = fct_lump(cause_short, n = 11)) %>%
+  count(year, cause_short) %>%
+  ggplot(aes(x= year, y= n, colour = cause_short)) +
+  geom_line() +
+  labs(x= "Year", y= "Number of Deaths", colour = "Cause", title = "Top 10 causes of deaths through the years") +
+  theme_minimal()
+
+
+police_deaths_clean %>%
+  mutate(cause_short = fct_lump(cause_short, n = 11)) %>%
+  count(year, cause_short) %>%
+  ggplot(aes(x= year, y= n, colour = cause_short == "Automobile accident", group = cause_short)) +
+  geom_line() +
+  scale_colour_manual(values = c("lightgrey", "red")) +
+  labs(x= "Year", y= "Number of Deaths", title = "Top 10 causes of deaths through the years", subtitle = "Automobile accidents have been increasing over the last 60 years", colour = "Automobile \nAccident") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+```
+
+The 1920s were the worst decade for police deaths. I might investigate this later in a subsequent kernel.
+```{r}
+police_deaths_clean %>%
+  group_by(Decade = 10 * (year %/% 10)) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(x= factor(Decade), y= n)) +
+  geom_col(fill = "midnightblue") +
+  coord_flip() +
+  labs(x= "Decade", y= "Count of deaths", title = "Deaths through the decades", subtitle = "The 1920's have the most recorded deaths") +
+  theme_minimal()
+```
+
+
+```{r}
+death_count <- police_deaths_clean %>%
+  count(year, state)
+```
+
+Analysing data since 1900, we can see that the 1970s and 80s were particularly bad for police deaths. The LA riots undoubtedly played a major role in this. Positively, the number of police deaths look to be considerably down this decade (although the decade is only 60% of the way through in this dataset).
+
+Similarly, Texas has also seen the number of police deaths fall over the last four decades. The 40s and 50s were better years in that state.
+
+The 2000s were particularly bad for police officers in New York, no doubt as a result of the horrendous terrorist acts on 9/11.
+
+It is interesting to note that the 1920s and 30s saw Illinois have a large number of police deaths (the second highest state behing NY that decade). This may explain the 1920s being the worst decade in the US for police shootings. It is fair to say that a large number of these deaths could be attributed to Prohibition in that state.
+
+```{r}
+death_count %>%
+  mutate(Decade = 10 * (year %/% 10)) %>%
+  filter(year >= 1900) %>%
+  group_by(Decade, state) %>%
+  summarise(n = sum(n)) %>%
+  left_join(us_map(), by = c("state" = "abbr")) %>%
+  ggplot(aes(x= long, y= lat, fill = n, group = group)) +
+  geom_polygon(color = "black") +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 75) +
+  theme_void() +
+  facet_wrap(~ Decade) +
+  theme(strip.text = element_text(size = 12)) +
+  labs(fill = "Number of \nDeaths", title = "Police deaths in the states through the decades") +
+  theme(plot.title = element_text(size = 18))
+```
+
+
+# Analysing the worst incidents
+
+To determine the worst incidents in history, I will make some assumptions. I first created a new variable that joins the date variable and the state and then did a count of the data, but found the the event on 9/11 only resulted in 70 deaths. This was short, and upon further inspection found that three deaths were attributed to state "US".
+
+Therefore I have now joined the `date` and `cause_short` variables. This is probably not totally accurate, but will just see what it brings out.
+
+```{r}
+police_deaths_clean %>%
+  mutate(Event = paste(date, cause_short, sep = "_")) %>%
+  count(Event,sort = T) %>%
+  head(20) %>%
+  rename(CountOfDeaths = n) %>%
+  kable(caption = "The 20 worst attaches on officers") %>% kable_styling(bootstrap_options = c("striped", "hover","condensed", "responsive"))
+```
+
+As can be seen above, this method has done a fairly good job in classifying the worst events.
+
+9/11 is very obvious and stands as a grim reminder of the events of that horrible day. Second on the list was the Virginia State Building collapse in 1870 (http://www.richmondpolicemuseum.com/richmonds-fallen-officers/), while the 1932 killing was of 10 unsuspecting officers on the Young brothers' family farm in the Ozarks (http://www.nleomf.org/museum/news/newsletters/online-insider/january-2012/young-brothers-massacre-jan-2-1932.html). The Oklahoma City bombing is also on the list and occurred on 1995-04-19.
+
+
+# 1920s: The worst decade in history
+
+```{r}
+the_20s <- police_deaths_clean %>%
+  filter(between(year, 1920, 1929))
+
+the_20s %>%
+  count(cause_short, sort = T)
+
+the_20s %>%
+  count(state, sort = T)
+
+the_20s %>%
+  group_by(state) %>%
+  summarise(n = n()) %>%
+  left_join(us_map(), by = c("state" = "abbr")) %>%
+  ggplot(aes(x= long, y= lat, fill = n, group = group)) +
+  geom_polygon(color = "black") +
+  scale_fill_gradient2(low = "blue", high = "red", midpoint = 75) +
+  theme_void() +
+  theme(strip.text = element_text(size = 12)) +
+  labs(fill = "Number of \nDeaths", title = "Police deaths in the states during the 1920s") +
+  theme(plot.title = element_text(size = 18))
+
+
+
+
+
+```
+
+
+
+
+# Conclusion
+This has been a very sombre dataset to analyse given the nature of the data. It just reinforces that police officers are constantly putting their lives on the line to serve and protect. 
+
+My condolences go out to the loved ones who have lost their lives in the line of duty.
+
+Thanks for reading my analysis and feel free to provide any feedback to help improve it.
+
+
+
+
+
+
+
+
+
